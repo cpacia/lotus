@@ -499,6 +499,66 @@ func TestSyncFork(t *testing.T) {
 	phead()
 }
 
+
+func TestSyncForkToFinality(t *testing.T) {
+	H := 10
+	tu := prepSyncTest(t, H)
+
+	p1 := tu.addClientNode()
+	p2 := tu.addClientNode()
+
+	fmt.Println("GENESIS: ", tu.g.Genesis().Cid())
+	tu.loadChainToNode(p1)
+	tu.loadChainToNode(p2)
+
+	phead := func() {
+		h1, err := tu.nds[1].ChainHead(tu.ctx)
+		require.NoError(tu.t, err)
+
+		h2, err := tu.nds[2].ChainHead(tu.ctx)
+		require.NoError(tu.t, err)
+
+		fmt.Println("Node 1: ", h1.Cids(), h1.Parents(), h1.Height())
+		fmt.Println("Node 2: ", h2.Cids(), h1.Parents(), h2.Height())
+		//time.Sleep(time.Second * 2)
+		fmt.Println()
+		fmt.Println()
+		fmt.Println()
+		fmt.Println()
+	}
+
+	phead()
+
+	base := tu.g.CurTipset
+	fmt.Println("Mining base: ", base.TipSet().Cids(), base.TipSet().Height())
+
+	// A mines a chain which finalizes
+	a := tu.mineOnBlock(base, p1, []int{0}, true, false)
+	for i:=0; i<int(miner.ChainFinality)-1; i++ {
+		a = tu.mineOnBlock(a, p1, []int{0}, true, false)
+	}
+
+	require.NoError(t, tu.g.ResyncBankerNonce(base.TipSet()))
+
+	// B miners a longer chain
+	b := tu.mineOnBlock(base, p2, []int{1}, true, false)
+	for i:=0; i<int(miner.ChainFinality); i++ {
+		b = tu.mineOnBlock(b, p2, []int{1}, true, false)
+	}
+
+	fmt.Println("A: ", a.Cids(), a.TipSet().Height())
+	fmt.Println("B: ", b.Cids(), b.TipSet().Height())
+
+	require.NoError(t, tu.mn.LinkAll())
+	tu.connect(p1, p2)
+
+	// TODO: make sure heads don't match.
+	//tu.waitUntilSyncTarget(p1, b.TipSet())
+	//tu.waitUntilSyncTarget(p2, b.TipSet())
+
+	phead()
+}
+
 func BenchmarkSyncBasic(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		runSyncBenchLength(b, 100)
